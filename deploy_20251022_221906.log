@@ -1,0 +1,4 @@
+
+2025-10-22 22:19:06 - [INFO] --- Stage 1: Collecting Required Deployment Parameters ---
+Enter Git Repository URL (e.g., https://github.com/user/repo.git): Enter Git Personal Access Token (PAT - Input hidden): 
+Enter Remote Server SSH Username (e.g., ubuntu, ec2-user): Enter Remote Server IP Address: Enter Path to SSH Private Key (e.g., ~/.ssh/hng-devops-key.pem): 
