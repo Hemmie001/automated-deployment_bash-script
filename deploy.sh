@@ -118,6 +118,11 @@ fi
 # Switch to the specified branch (using a subshell for safety)
 (cd "$LOCAL_PROJECT_DIR" && git checkout "$APP_BRANCH") || handle_error "Failed to checkout branch $APP_BRANCH. Does it exist?"
 
+# NEW FIX: Remove the local .git directory before transfer. This ensures SCP doesn't hit
+# permission issues or waste time copying unnecessary Git history to the remote server.
+log "Removing local .git directory from cloned repo to prepare for clean transfer..."
+rm -rf "$LOCAL_PROJECT_DIR/.git" || true
+
 # Requirement: Validate Docker recipe existence
 if [ ! -f "$LOCAL_PROJECT_DIR/Dockerfile" ] && [ ! -f "$LOCAL_PROJECT_DIR/docker-compose.yml" ]; then
     handle_error "Neither Dockerfile nor docker-compose.yml found in $LOCAL_PROJECT_DIR. Cannot deploy a Dockerized app."
@@ -138,8 +143,8 @@ remote_exec "sudo chown -R $SSH_USER:$SSH_USER $REMOTE_PROJECT_DIR" || handle_er
 remote_exec "
     # Update and install dependencies (Req 5).
     sudo apt update
-    # FIX: Install rsync for robust file transfer
-    sudo apt install -y docker.io docker-compose nginx rsync || handle_error 'Dependency installation failed.'
+    # Using only Docker, Docker Compose, and Nginx.
+    sudo apt install -y docker.io docker-compose nginx || handle_error 'Dependency installation failed.'
     
     # Add user to docker group (Req 5 - ensures deployment user can run docker commands).
     sudo usermod -aG docker $SSH_USER || handle_error 'Failed to add user to docker group.'
@@ -152,7 +157,7 @@ remote_exec "
     nginx -v 2>&1 || handle_error 'Nginx failed to install.'
 " || handle_error "Remote dependency setup failed."
 
-log "Remote environment prepared: Docker, Docker Compose, NGINX, and rsync are installed and running."
+log "Remote environment prepared: Docker, Docker Compose, and NGINX are installed and running."
 
 # --- 6. Deploy the Dockerized Application (Req 6 & 10) ---
 log "--- Stage 5: Deploying Application (Transfer and Build) ---"
@@ -160,11 +165,8 @@ log "--- Stage 5: Deploying Application (Transfer and Build) ---"
 # Requirement: Transfer Project Files
 log "Transferring project files from local machine to $REMOTE_PROJECT_DIR..."
 
-# FIX: Use rsync instead of scp to EXCLUDE the .git directory, fixing the Permission Denied error.
-# -avz: Archive mode, verbose, compress.
-# --delete: Removes old files from the remote server not present locally (idempotency).
-# --exclude='.git': This fixes the "Permission denied" error.
-rsync -avz --delete --exclude='.git' -e "ssh -i $SSH_KEY_PATH" "$LOCAL_PROJECT_DIR/" "$SSH_USER@$SSH_IP:$REMOTE_PROJECT_DIR" || handle_error "Rsync file transfer failed."
+# Using scp, which is safe because the local .git directory was deleted in Stage 2.
+scp -i "$SSH_KEY_PATH" -r "$LOCAL_PROJECT_DIR/." "$SSH_USER@$SSH_IP:$REMOTE_PROJECT_DIR" || handle_error "SCP file transfer failed."
 
 # Requirement: Build and Run Containers (Idempotent)
 remote_exec "
