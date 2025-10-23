@@ -16,7 +16,7 @@ LOCAL_PROJECT_DIR="./cloned_repo"     # Local temp folder for code cloning
 CONTAINER_NAME="devops-container"
 APP_INTERNAL_PORT=8080               # Requirement: Application container listens on 8080
 
-# --- Utility Functions for Error Management and Input (FIXED PROMPTS) ---
+# --- Utility Functions for Error Management and Input ---
 
 log() {
     # Custom logger
@@ -81,7 +81,7 @@ log "Parameters collected and validated successfully."
 
 # --- 3. Remote Execution Wrapper and Connection Setup (Req 4) ---
 
-# Define the remote execution function. This abstracts the SSH command.
+# Define the remote execution function.
 remote_exec() {
     # FIX: Added ServerAliveInterval=60 to send keep-alive packets and prevent connection timeouts (Bug Fix).
     ssh -i "$SSH_KEY_PATH" "$SSH_USER@$SSH_IP" -o BatchMode=yes -o ServerAliveInterval=60 "$1"
@@ -100,12 +100,7 @@ log "--- Stage 2: Cloning/Pulling Repository ---"
 # Insert the PAT into the Git URL for authenticated cloning.
 AUTH_REPO_URL=$(echo "$GIT_REPO_URL" | sed "s|://|://x-oauth-basic:$GIT_PAT@|")
 
-# Clean up remote log files that were in the cloned directory (from the last failed run)
-# We exclude files that are definitely needed for the app.
-log "Cleaning up log files from previous failed runs..."
-(cd "$LOCAL_PROJECT_DIR" 2>/dev/null && rm -f *.log deploy*.sh) || true
-
-# CRITICAL FIX: Use subshells '(...)' for 'cd' to prevent changing the main script's directory.
+# Requirement: Idempotency Check & Subshells Fix
 if [ -d "$LOCAL_PROJECT_DIR" ]; then
     log "Repository directory exists. Pulling latest code..."
     # Use subshell to cd and pull, keeping the script's main directory intact (Bug Fix).
@@ -127,18 +122,17 @@ log "Repository synchronized and validated. Code is ready for transfer."
 
 
 # --- 5. Prepare the Remote Environment (Req 5) ---
-log "--- Stage 4: Preparing Remote Host (Installing Dependencies) ---"
+log "--- Stage 4: Preparing Remote Host (Installing Docker/Nginx) ---"
 
 # Create target directory
 remote_exec "sudo mkdir -p $REMOTE_PROJECT_DIR"
 
-# FIX: Change ownership so the non-root SSH user can write files via SCP/rsync (Permission Bug Fix).
+# FIX: Change ownership so the non-root SSH user can write files via SCP (Permission Bug Fix).
 remote_exec "sudo chown -R $SSH_USER:$SSH_USER $REMOTE_PROJECT_DIR" || handle_error "Failed to set ownership on remote directory."
 
 remote_exec "
     # Update and install dependencies (Req 5).
     sudo apt update
-    # FIX: Install rsync for robust file transfer
     sudo apt install -y docker.io docker-compose nginx rsync || handle_error 'Dependency installation failed.'
     
     # Add user to docker group (Req 5 - ensures deployment user can run docker commands).
@@ -152,18 +146,14 @@ remote_exec "
     nginx -v 2>&1 || handle_error 'Nginx failed to install.'
 " || handle_error "Remote dependency setup failed."
 
-log "Remote environment prepared: Docker, Docker Compose, NGINX, and rsync are installed and running."
+log "Remote environment prepared: Docker, Docker Compose, and NGINX are installed and running."
 
 # --- 6. Deploy the Dockerized Application (Req 6 & 10) ---
 log "--- Stage 5: Deploying Application (Transfer and Build) ---"
 
 # Requirement: Transfer Project Files
 log "Transferring project files from local machine to $REMOTE_PROJECT_DIR..."
-
-# FIX: Use rsync instead of scp to EXCLUDE the .git directory, fixing the Permission Denied error.
-# -avz: Archive mode, verbose, compress.
-# --delete: Removes old files from the remote server not present locally (idempotency).
-# --exclude='.git': This fixes the "Permission denied" error.
+# SCP works now because the script's directory did not change (subshell fix).
 rsync -avz --delete --exclude='.git' -e "ssh -i $SSH_KEY_PATH" "$LOCAL_PROJECT_DIR/" "$SSH_USER@$SSH_IP:$REMOTE_PROJECT_DIR" || handle_error "Rsync file transfer failed."
 
 # Requirement: Build and Run Containers (Idempotent)
@@ -225,7 +215,6 @@ remote_exec "docker ps --filter name=$CONTAINER_NAME --format '{{.Status}}' | gr
 remote_exec "curl -s -o /dev/null -w '%{http_code}' http://localhost/ | grep 200" || handle_error "Validation failed: Nginx proxy check returned non-200 status. Check firewall and container port."
 
 log "🎉 SUCCESS! Application is live and accessible on http://$SSH_IP 🎉"
-log "The task is complete. Proceed to commit and submit via Slack."
 
 # --- 9. Final Cleanup (Req 10) ---
 rm -rf "$LOCAL_PROJECT_DIR" 2>/dev/null || true
