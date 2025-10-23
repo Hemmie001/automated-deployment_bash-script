@@ -223,19 +223,12 @@ log "Nginx successfully configured and reloaded."
 log "--- Stage 7: Final Validation ---"
 
 # 1. Check Container Health
-# CRITICAL FIX: Add diagnostic log dump if the container is not running (Bug Fix).
-remote_exec "
-    if ! docker ps --filter name=$CONTAINER_NAME --format '{{.Status}}' | grep 'Up'; then
-        echo 'CRITICAL: Container failed to start. Dumping logs for diagnosis:'
-        docker logs $CONTAINER_NAME
-        exit 1 # Fails the remote command, triggering the local handle_error
-    fi
-" || handle_error "Validation failed: Container is not running or healthy. See logs for crash reason."
+remote_exec "docker ps --filter name=$CONTAINER_NAME --format '{{.Status}}' | grep 'Up'" || handle_error "Validation failed: Container is not running or healthy."
 
 # 2. Check Nginx Proxy (curl test on localhost:80)
 remote_exec "curl -s -o /dev/null -w '%{http_code}' http://localhost/ | grep 200" || handle_error "Validation failed: Nginx proxy check returned non-200 status. Check firewall and container port."
 
-log "SUCCESS! Application is live and accessible on http://$SSH_IP"
+log "🎉 SUCCESS! Application is live and accessible on http://$SSH_IP 🎉"
 log "The task is complete. Proceed to commit and submit via Slack."
 
 # --- 9. Final Cleanup (Req 10) ---
