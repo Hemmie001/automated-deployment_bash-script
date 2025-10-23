@@ -1,0 +1,19 @@
+
+2025-10-23 14:33:08 - [INFO] --- Stage 1: Collecting Required Deployment Parameters ---
+Enter Git Repository URL (e.g., https://github.com/user/repo.git): Enter Git Personal Access Token (PAT - Input hidden): 
+Enter Remote Server SSH Username (e.g., ubuntu, ec2-user): Enter Remote Server IP Address: Enter Path to SSH Private Key (e.g., /c/Users/emman/.ssh/hng-devops-key.pem): Enter branch name (Default: main): 
+2025-10-23 14:35:06 - [INFO] Using branch: main
+
+2025-10-23 14:35:06 - [INFO] Application Internal Port is fixed at: 8080
+
+2025-10-23 14:35:06 - [INFO] Parameters collected and validated successfully.
+
+2025-10-23 14:35:06 - [INFO] --- Stage 2: Cloning/Pulling Repository ---
+
+2025-10-23 14:35:06 - [INFO] Cleaning up log files from previous failed runs...
+
+2025-10-23 14:35:07 - [INFO] Repository directory exists. Pulling latest code...
+fatal: unable to access 'https://github.com/Hemmie001/automated-deployment_bash-script.git/': Recv failure: Connection was reset
+
+2025-10-23 14:35:34 - [FATAL] Failed to pull latest code. Check PAT or URL.
+Deployment failed. Check deploy_20251023_143308.log for details.
