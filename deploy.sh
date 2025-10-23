@@ -133,7 +133,7 @@ remote_exec "sudo chown -R $SSH_USER:$SSH_USER $REMOTE_PROJECT_DIR" || handle_er
 remote_exec "
     # Update and install dependencies (Req 5).
     sudo apt update
-    sudo apt install -y docker.io docker-compose nginx || handle_error 'Dependency installation failed.'
+    sudo apt install -y docker.io docker-compose nginx rsync || handle_error 'Dependency installation failed.'
     
     # Add user to docker group (Req 5 - ensures deployment user can run docker commands).
     sudo usermod -aG docker $SSH_USER || handle_error 'Failed to add user to docker group.'
@@ -154,7 +154,7 @@ log "--- Stage 5: Deploying Application (Transfer and Build) ---"
 # Requirement: Transfer Project Files
 log "Transferring project files from local machine to $REMOTE_PROJECT_DIR..."
 # SCP works now because the script's directory did not change (subshell fix).
-scp -i "$SSH_KEY_PATH" -r "$LOCAL_PROJECT_DIR/." "$SSH_USER@$SSH_IP:$REMOTE_PROJECT_DIR" || handle_error "SCP file transfer failed."
+rsync -avz --delete --exclude='.git' -e "ssh -i $SSH_KEY_PATH" "$LOCAL_PROJECT_DIR/" "$SSH_USER@$SSH_IP:$REMOTE_PROJECT_DIR" || handle_error "Rsync file transfer failed."
 
 # Requirement: Build and Run Containers (Idempotent)
 remote_exec "
