@@ -143,6 +143,13 @@ log "--- Stage 5: Deploying Application (Transfer and Build) ---"
 # Requirement: Transfer Project Files
 log "Transferring project files from local machine to $REMOTE_PROJECT_DIR..."
 # -r: recursive; '.': copy contents of current dir;
+# Note: We use the absolute path of the local directory (pwd is the project root)
+# The current directory must be reset back to the original script location before this command runs.
+
+# Return to the script's original execution directory (the parent folder).
+cd - > /dev/null || handle_error "Failed to return to the project root directory."
+
+# Now SCP can correctly find ./cloned_repo
 scp -i "$SSH_KEY_PATH" -r "$LOCAL_PROJECT_DIR/." "$SSH_USER@$SSH_IP:$REMOTE_PROJECT_DIR" || handle_error "SCP file transfer failed."
 
 # Requirement: Build and Run Containers (Idempotent)
