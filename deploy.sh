@@ -30,8 +30,6 @@ handle_error() {
     # Requirement: Report error and exit on failure.
     echo -e "\n$(date '+%Y-%m-%d %H:%M:%S') - [FATAL] $1" >&2
     echo "Deployment failed. Check $LOG_FILE for details." >&2
-    # Ensure local temp directory is cleaned up on failure
-    rm -rf "$LOCAL_PROJECT_DIR" 2>/dev/null || true
     exit 1
 }
 
@@ -63,7 +61,7 @@ prompt_required "Enter Git Repository URL (e.g., https://github.com/user/repo.gi
 prompt_sensitive "Enter Git Personal Access Token (PAT - Input hidden): " GIT_PAT
 prompt_required "Enter Remote Server SSH Username (e.g., ubuntu, ec2-user): " SSH_USER
 prompt_required "Enter Remote Server IP Address: " SSH_IP
-prompt_required "Enter Path to SSH Private Key (e.g., /c/Users/emman/.ssh/hng-devops-key.pem): " SSH_KEY_PATH
+prompt_required "Enter Path to SSH Private Key (e.g., ~/.ssh/hng-devops-key.pem): " SSH_KEY_PATH
 
 # Branch name (optional; defaults to main)
 read -p "Enter branch name (Default: main): " APP_BRANCH
@@ -77,34 +75,33 @@ if [ ! -f "$SSH_KEY_PATH" ]; then
 fi
 log "Parameters collected and validated successfully."
 
-# --- 3. Local Repository Management (FIXED: Using Subshells) ---
+# --- 3. Local Repository Management ---
 log "--- Stage 2: Cloning/Pulling Repository ---"
 
 # Requirement: Authenticate Clone
 # Insert the PAT into the Git URL for authenticated cloning.
 AUTH_REPO_URL=$(echo "$GIT_REPO_URL" | sed "s|://|://x-oauth-basic:$GIT_PAT@|")
 
-# CRITICAL FIX: Use subshells '(...)' for 'cd' to prevent changing the main script's directory.
+# Requirement: Idempotency Check
 if [ -d "$LOCAL_PROJECT_DIR" ]; then
     log "Repository directory exists. Pulling latest code..."
-    # Execute pull inside a subshell to maintain script's current directory
-    (cd "$LOCAL_PROJECT_DIR" && git pull) || handle_error "Failed to pull latest code. Check PAT or URL."
+    cd "$LOCAL_PROJECT_DIR" || handle_error "Failed to enter directory $LOCAL_PROJECT_DIR."
+    git pull || handle_error "Failed to pull latest code. Check PAT or URL."
 else
     log "Cloning repository $GIT_REPO_URL..."
-    # Clone is run in the current directory
     git clone "$AUTH_REPO_URL" "$LOCAL_PROJECT_DIR" || handle_error "Failed to clone repository. Check PAT or URL."
+    cd "$LOCAL_PROJECT_DIR" || handle_error "Failed to enter directory $LOCAL_PROJECT_DIR after clone."
 fi
 
-# Checkout the specified branch (using a subshell for safety)
-(cd "$LOCAL_PROJECT_DIR" && git checkout "$APP_BRANCH") || handle_error "Failed to checkout branch $APP_BRANCH. Does it exist?"
+# Checkout the specified branch
+git checkout "$APP_BRANCH" || handle_error "Failed to checkout branch $APP_BRANCH. Does it exist?"
 
-# Requirement: Validate Docker recipe existence inside the cloned folder
-if [ ! -f "$LOCAL_PROJECT_DIR/Dockerfile" ] && [ ! -f "$LOCAL_PROJECT_DIR/docker-compose.yml" ]; then
-    handle_error "Neither Dockerfile nor docker-compose.yml found in $LOCAL_PROJECT_DIR. Cannot deploy."
+# Requirement: Validate Docker recipe existence
+if [ ! -f Dockerfile ] && [ ! -f docker-compose.yml ]; then
+    handle_error "Neither Dockerfile nor docker-compose.yml found. Cannot deploy a Dockerized app."
 fi
 
 log "Repository synchronized and validated. Code is ready for transfer."
-# The script's working directory is still the project root, fixing the SCP issue.
 
 # --- 4. Remote Execution Wrapper and Connection Test ---
 
@@ -127,7 +124,7 @@ remote_exec "sudo mkdir -p $REMOTE_PROJECT_DIR"
 
 # Requirement: Install Dependencies (Idempotent)
 remote_exec "
-    # Update and install dependencies.
+    # Update and install dependencies. This handles the existing NGINX installation safely.
     sudo apt update
     sudo apt install -y docker.io docker-compose nginx || handle_error 'Dependency installation failed.'
     
@@ -140,12 +137,12 @@ remote_exec "
 
 log "Remote environment prepared: Docker, Docker Compose, and NGINX are installed and running."
 
-# --- 6. Deploy the Dockerized Application (SCP Path is now correct) ---
+# --- 6. Deploy the Dockerized Application ---
 log "--- Stage 5: Deploying Application (Transfer and Build) ---"
 
 # Requirement: Transfer Project Files
 log "Transferring project files from local machine to $REMOTE_PROJECT_DIR..."
-# The script is in the project root, so ./cloned_repo is the correct source path.
+# -r: recursive; '.': copy contents of current dir;
 scp -i "$SSH_KEY_PATH" -r "$LOCAL_PROJECT_DIR/." "$SSH_USER@$SSH_IP:$REMOTE_PROJECT_DIR" || handle_error "SCP file transfer failed."
 
 # Requirement: Build and Run Containers (Idempotent)
@@ -157,7 +154,7 @@ remote_exec "
     docker stop $CONTAINER_NAME 2>/dev/null || true
     docker rm $CONTAINER_NAME 2>/dev/null || true
     
-    # Build and run using the Dockerfile.
+    # Build and run using the Dockerfile (we assume this simple structure).
     log 'Building and running new container image...'
     docker build -t $CONTAINER_NAME . || handle_error 'Docker build failed. Check your Dockerfile.'
     
@@ -170,7 +167,7 @@ log "Container built and launched successfully on internal port $APP_INTERNAL_PO
 # --- 7. Configure Nginx as a Reverse Proxy ---
 log "--- Stage 6: Configuring Nginx Reverse Proxy (Port 80 -> Port 8080) ---"
 
-# Dynamically create Nginx config using Heredoc
+# Requirement: Dynamically create Nginx config using Heredoc
 # The configuration forwards public traffic on port 80 to the container's internal port (8080).
 read -r -d '' NGINX_CONF_CONTENT << EOL
 server {
@@ -191,14 +188,15 @@ server {
 }
 EOL
 
-# Overwrite Nginx config
+# Requirement: Overwrite Nginx config
+# Use 'tee' with sudo to write the content, overwriting the existing config.
 log "Overwriting /etc/nginx/sites-available/default with reverse proxy settings."
 echo "$NGINX_CONF_CONTENT" | remote_exec "sudo tee /etc/nginx/sites-available/default > /dev/null" || handle_error "Failed to write Nginx config."
 
-# Symlink config (idempotent)
+# Symlink config (idempotent, ensures sites-enabled/default points to the new config)
 remote_exec "sudo ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default"
 
-# Test config and reload Nginx
+# Requirement: Test config and reload Nginx
 remote_exec "sudo nginx -t" || handle_error "Nginx configuration test failed. Check config syntax."
 remote_exec "sudo systemctl reload nginx" || handle_error "Nginx reload failed. Check service status."
 
@@ -211,13 +209,10 @@ log "--- Stage 7: Final Validation ---"
 remote_exec "docker ps --filter name=$CONTAINER_NAME --format '{{.Status}}' | grep 'Up'" || handle_error "Validation failed: Container is not running or healthy."
 
 # 2. Check Nginx Proxy (curl test)
-# This confirms Nginx (on localhost:80) is proxying correctly to the Docker container.
+# This command checks if Nginx (on localhost:80) returns a 200 HTTP status code.
+# This confirms Nginx is proxying correctly to the Docker container.
 remote_exec "curl -s -o /dev/null -w '%{http_code}' http://localhost/ | grep 200" || handle_error "Validation failed: Nginx proxy check returned non-200 status. Check firewall and container port."
 
-log "SUCCESS! Application is live and accessible on http://$SSH_IP"
+log " SUCCESS! Application is live and accessible on http://$SSH_IP "
 log "The task is complete. Proceed to commit and submit via Slack."
-
-# Clean up local cloned repo on successful exit
-rm -rf "$LOCAL_PROJECT_DIR" 2>/dev/null || true
-log "Local temporary directory cleaned up."
 
