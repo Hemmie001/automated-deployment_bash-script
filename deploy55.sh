@@ -190,29 +190,26 @@ log "Container built and launched successfully on internal port $APP_INTERNAL_PO
 # --- 7. Configure Nginx as a Reverse Proxy (Req 7) ---
 log "--- Stage 6: Configuring Nginx Reverse Proxy (Port 80 -> Port 8080) ---"
 
-# FIX: Removed $NGINX_CONF_CONTENT variable and placed the Nginx logic directly in the SSH block
-# to avoid complex quoting issues that caused the script to exit silently.
-
-remote_exec "
-    # Overwrite Nginx config using a secure heredoc to pass the multi-line content to sudo tee
-    # The 'EOF' must be quoted ('EOF') to prevent local variable expansion.
-    sudo tee /etc/nginx/sites-available/default > /dev/null << 'EOF'
+# Dynamically create Nginx config using Heredoc
+read -r -d '' NGINX_CONF_CONTENT << EOL
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name $SSH_IP;
 
     location / {
-        # Proxy traffic to the Docker container, listening on port $APP_INTERNAL_PORT.
+        # Proxy traffic to the Docker container, listening on port 8080.
         proxy_pass http://localhost:$APP_INTERNAL_PORT;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
 }
-EOF
-" || handle_error "Failed to write Nginx configuration remotely."
+EOL
 
+# Overwrite Nginx config
+log "Overwriting /etc/nginx/sites-available/default with reverse proxy settings."
+echo "$NGINX_CONF_CONTENT" | remote_exec "sudo tee /etc/nginx/sites-available/default > /dev/null" || handle_error "Failed to write Nginx config."
 
 # Test config and reload Nginx
 remote_exec "sudo nginx -t" || handle_error "Nginx configuration test failed. Check config syntax."
@@ -229,7 +226,7 @@ remote_exec "docker ps --filter name=$CONTAINER_NAME --format '{{.Status}}' | gr
 # 2. Check Nginx Proxy (curl test on localhost:80)
 remote_exec "curl -s -o /dev/null -w '%{http_code}' http://localhost/ | grep 200" || handle_error "Validation failed: Nginx proxy check returned non-200 status. Check firewall and container port."
 
-log " SUCCESS! Application is live and accessible on http://$SSH_IP "
+log "🎉 SUCCESS! Application is live and accessible on http://$SSH_IP 🎉"
 log "The task is complete. Proceed to commit and submit via Slack."
 
 # --- 9. Final Cleanup (Req 10) ---
