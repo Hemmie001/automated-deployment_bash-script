@@ -181,9 +181,8 @@ remote_exec "
     log 'Building and running new container image...'
     docker build -t $CONTAINER_NAME . || handle_error 'Docker build failed. Check your Dockerfile.'
     
-    # CRITICAL FIX: Use --network host to ensure Nginx on the host can connect to the container (Bug Fix).
-    # Removed: -p $APP_INTERNAL_PORT:$APP_INTERNAL_PORT
-    docker run -d --name $CONTAINER_NAME --network host --restart unless-stopped $CONTAINER_NAME || handle_error 'Docker run failed.'
+    # Run the container, mapping the internal port (8080) to the host (Req 6).
+    docker run -d --name $CONTAINER_NAME -p $APP_INTERNAL_PORT:$APP_INTERNAL_PORT --restart unless-stopped $CONTAINER_NAME || handle_error 'Docker run failed.'
 " || handle_error "Docker deployment failed."
 
 log "Container built and launched successfully on internal port $APP_INTERNAL_PORT."
@@ -191,7 +190,9 @@ log "Container built and launched successfully on internal port $APP_INTERNAL_PO
 # --- 7. Configure Nginx as a Reverse Proxy (Req 7) ---
 log "--- Stage 6: Configuring Nginx Reverse Proxy (Port 80 -> Port 8080) ---"
 
-# FIX: Configuration logic placed directly inside a robust SSH block to avoid quoting failures.
+# FIX: Removed $NGINX_CONF_CONTENT variable and placed the Nginx logic directly in the SSH block
+# to avoid complex quoting issues that caused the script to exit silently.
+
 remote_exec "
     # Overwrite Nginx config using a secure heredoc to pass the multi-line content to sudo tee
     # The 'EOF' must be quoted ('EOF') to prevent local variable expansion.
@@ -228,7 +229,7 @@ remote_exec "docker ps --filter name=$CONTAINER_NAME --format '{{.Status}}' | gr
 # 2. Check Nginx Proxy (curl test on localhost:80)
 remote_exec "curl -s -o /dev/null -w '%{http_code}' http://localhost/ | grep 200" || handle_error "Validation failed: Nginx proxy check returned non-200 status. Check firewall and container port."
 
-log "🎉 SUCCESS! Application is live and accessible on http://$SSH_IP 🎉"
+log " SUCCESS! Application is live and accessible on http://$SSH_IP "
 log "The task is complete. Proceed to commit and submit via Slack."
 
 # --- 9. Final Cleanup (Req 10) ---
