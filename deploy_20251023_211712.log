@@ -1,0 +1,100 @@
+
+2025-10-23 21:17:12 - [INFO] --- Stage 1: Collecting Required Deployment Parameters ---
+Enter Git Repository URL (e.g., https://github.com/user/repo.git): Enter Git Personal Access Token (PAT - Input hidden): 
+Enter Remote Server SSH Username (e.g., ubuntu): Enter Remote Server IP Address: Enter Path to SSH Private Key (e.g., /c/Users/user/.ssh/id_rsa.pem): Enter deployment branch name (Default: main): 
+2025-10-23 21:18:15 - [INFO] Using branch: main
+
+2025-10-23 21:18:15 - [INFO] Application Internal Port is fixed at: 8080
+
+2025-10-23 21:18:15 - [INFO] Parameters collected and validated successfully.
+
+2025-10-23 21:18:15 - [INFO] --- Stage 3: Establishing Remote Connection and Checking Access ---
+SSH connection successful
+
+2025-10-23 21:18:20 - [INFO] SSH connectivity test passed.
+
+2025-10-23 21:18:20 - [INFO] --- Stage 2: Cloning/Pulling Repository ---
+
+2025-10-23 21:18:21 - [INFO] Cleaning up log files from previous failed runs...
+
+2025-10-23 21:18:21 - [INFO] Cloning repository https://github.com/Hemmie001/automated-deployment_bash-script.git...
+Cloning into './cloned_repo'...
+Your branch is up to date with 'origin/main'.
+Already on 'main'
+
+2025-10-23 21:18:25 - [INFO] Removing local .git directory from cloned repo to prepare for clean transfer...
+
+2025-10-23 21:18:25 - [INFO] Repository synchronized and validated. Code is ready for transfer.
+
+2025-10-23 21:18:25 - [INFO] --- Stage 4: Preparing Remote Host (Installing Dependencies) ---
+
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Hit:1 http://us-west-2.ec2.archive.ubuntu.com/ubuntu noble InRelease
+Hit:2 http://us-west-2.ec2.archive.ubuntu.com/ubuntu noble-updates InRelease
+Hit:3 http://us-west-2.ec2.archive.ubuntu.com/ubuntu noble-backports InRelease
+Get:4 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+Get:5 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [1260 kB]
+Get:6 http://security.ubuntu.com/ubuntu noble-security/main Translation-en [208 kB]
+Fetched 1595 kB in 2s (643 kB/s)
+Reading package lists...
+Building dependency tree...
+Reading state information...
+23 packages can be upgraded. Run 'apt list --upgradable' to see them.
+Reading package lists...
+Building dependency tree...
+Reading state information...
+docker.io is already the newest version (28.2.2-0ubuntu1~24.04.1).
+docker-compose is already the newest version (1.29.2-6ubuntu1).
+nginx is already the newest version (1.24.0-2ubuntu7.5).
+0 upgraded, 0 newly installed, 0 to remove and 23 not upgraded.
+
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Synchronizing state of nginx.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable nginx
+Docker version 28.2.2, build 28.2.2-0ubuntu1~24.04.1
+nginx version: nginx/1.24.0 (Ubuntu)
+
+2025-10-23 21:20:01 - [INFO] Remote environment prepared: Docker, Docker Compose, and NGINX are installed and running.
+
+2025-10-23 21:20:01 - [INFO] --- Stage 5: Deploying Application (Transfer and Build) ---
+
+2025-10-23 21:20:01 - [INFO] Transferring project files from local machine to /opt/devops_app...
+bash: line 5: log: command not found
+devops-container
+devops-container
+Sending build context to Docker daemon  250.9kB
+Step 1/4 : FROM nginx:alpine
+ ---> 5e7abcdd2021
+Step 2/4 : COPY index.html /usr/share/nginx/html/index.html
+ ---> Using cache
+ ---> 5b59e45e437d
+Step 3/4 : EXPOSE 8080
+ ---> Using cache
+ ---> eaf476b5d955
+Step 4/4 : CMD ["nginx", "-g", "daemon off;"]
+ ---> Using cache
+ ---> d5b9837992b5
+Successfully built d5b9837992b5
+bash: line 10: log: command not found
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Successfully tagged devops-container:latest
+ace25040ce27fa98bc27e5924dd9213b82a8cde0e671dee68d6c7525085d87a3
+
+2025-10-23 21:23:50 - [INFO] Container built and launched successfully on internal port 8080.
+
+2025-10-23 21:23:50 - [INFO] --- Stage 6: Configuring Nginx Reverse Proxy (Port 80 -> Port 8080) ---
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+
+2025-10-23 21:24:54 - [INFO] Nginx successfully configured and reloaded.
+
+2025-10-23 21:24:54 - [INFO] --- Stage 7: Final Validation ---
+Up 1 second
+
+2025-10-23 21:25:11 - [FATAL] Validation failed: Nginx proxy check returned non-200 status. Check firewall and container port.
+Deployment failed. Check deploy_20251023_211712.log for details.
