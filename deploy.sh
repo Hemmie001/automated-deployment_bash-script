@@ -79,25 +79,24 @@ log "Parameters collected and validated successfully."
 log "--- Stage 2: Cloning/Pulling Repository ---"
 
 # Requirement: Authenticate Clone
-# Insert the PAT into the Git URL for authenticated cloning.
 AUTH_REPO_URL=$(echo "$GIT_REPO_URL" | sed "s|://|://x-oauth-basic:$GIT_PAT@|")
 
 # Requirement: Idempotency Check
 if [ -d "$LOCAL_PROJECT_DIR" ]; then
     log "Repository directory exists. Pulling latest code..."
-    cd "$LOCAL_PROJECT_DIR" || handle_error "Failed to enter directory $LOCAL_PROJECT_DIR."
-    git pull || handle_error "Failed to pull latest code. Check PAT or URL."
+    # Perform Git operations inside the directory
+    (cd "$LOCAL_PROJECT_DIR" && git pull) || handle_error "Failed to pull latest code. Check PAT or URL."
 else
     log "Cloning repository $GIT_REPO_URL..."
+    # Perform Git operations in the parent directory
     git clone "$AUTH_REPO_URL" "$LOCAL_PROJECT_DIR" || handle_error "Failed to clone repository. Check PAT or URL."
-    cd "$LOCAL_PROJECT_DIR" || handle_error "Failed to enter directory $LOCAL_PROJECT_DIR after clone."
 fi
 
-# Checkout the specified branch
-git checkout "$APP_BRANCH" || handle_error "Failed to checkout branch $APP_BRANCH. Does it exist?"
+# Checkout the specified branch (using a subshell for safety)
+(cd "$LOCAL_PROJECT_DIR" && git checkout "$APP_BRANCH") || handle_error "Failed to checkout branch $APP_BRANCH. Does it exist?"
 
 # Requirement: Validate Docker recipe existence
-if [ ! -f Dockerfile ] && [ ! -f docker-compose.yml ]; then
+if [ ! -f "$LOCAL_PROJECT_DIR/Dockerfile" ] && [ ! -f "$LOCAL_PROJECT_DIR/docker-compose.yml" ]; then
     handle_error "Neither Dockerfile nor docker-compose.yml found. Cannot deploy a Dockerized app."
 fi
 
