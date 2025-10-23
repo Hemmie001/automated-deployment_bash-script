@@ -110,7 +110,7 @@ log "Repository synchronized and validated. Code is ready for transfer."
 
 # Define the remote execution function. This abstracts the SSH command.
 remote_exec() {
-    ssh -i "$SSH_KEY_PATH" "$SSH_USER@$SSH_IP" -o BatchMode=yes "$1"
+    ssh -i "$SSH_KEY_PATH" "$SSH_USER@$SSH_IP" -o BatchMode=yes -o ServerAliveInterval=60 "$1"
 }
 
 log "--- Stage 3: Establishing Remote Connection and Checking Access ---"
